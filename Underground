@@ -1,0 +1,106 @@
+-- Multiplied Velocity Matrix & High-Speed Frame Sync
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+local lockedY = nil
+local lastPos = nil
+local originalY = nil
+local isActive = false
+local Y_OFFSET = -7
+local SPEED_MULTIPLIER = 1.7 -- Amplifies movement rate cleanly by 1.7x
+
+-- Screen UI Generation Layer
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleButton = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+ScreenGui.Name = "VelocityMatrixOverride_UI"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = ScreenGui
+ToggleButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+ToggleButton.Position = UDim2.new(0.05, 0, 0.45, 0)
+ToggleButton.Size = UDim2.new(0, 120, 0, 45)
+ToggleButton.Font = Enum.Font.RobotoMono
+ToggleButton.Text = "STATE: NORMAL"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+ToggleButton.BorderSizePixel = 0
+
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleButton
+
+-- Continuous Multiplied Physics Calculation Loop
+RunService.Heartbeat:Connect(function(deltaTime)
+    local character = LocalPlayer.Character
+    if not (character and character.PrimaryPart) then
+        lockedY = nil
+        lastPos = nil
+        originalY = nil
+        return
+    end
+    
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    if root and humanoid and humanoid.Health > 0 then
+        local currentPos = root.Position
+        
+        if isActive then
+            if not lockedY then
+                if not originalY then originalY = currentPos.Y end
+                lockedY = currentPos.Y + Y_OFFSET
+            end
+            
+            local moveDir = humanoid.MoveDirection
+            if moveDir.Magnitude > 0 then
+                -- Injects the clean 1.7x scalar to calculate the next position chunk frame-independently
+                local baseSpeed = humanoid.WalkSpeed
+                local modifiedSpeed = baseSpeed * SPEED_MULTIPLIER
+                lastPos = currentPos + (moveDir * modifiedSpeed * deltaTime)
+            else
+                if not lastPos then
+                    lastPos = currentPos
+                end
+            end
+            
+            local rotationComponent = root.CFrame - currentPos
+            root.CFrame = CFrame.new(lastPos.X, lockedY, lastPos.Z) * rotationComponent
+            
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        else
+            lockedY = nil
+            lastPos = nil
+        end
+    else
+        lockedY = nil
+        lastPos = nil
+        originalY = nil
+    end
+end)
+
+-- Click Handlers
+ToggleButton.MouseButton1Click:Connect(function()
+    isActive = not isActive
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    
+    if isActive then
+        ToggleButton.Text = "STATE: UNDER"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    else
+        ToggleButton.Text = "STATE: NORMAL"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        
+        if root and originalY then
+            local currentPos = root.Position
+            root.CFrame = CFrame.new(currentPos.X, originalY + 1, currentPos.Z) * (root.CFrame - currentPos)
+        end
+        originalY = nil
+    end
+end)
