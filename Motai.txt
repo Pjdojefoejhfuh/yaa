@@ -47,10 +47,41 @@ local arguments = table.pack(...)
 local sharedEnv = getgenv and getgenv() or _G
 local previous = rawget(sharedEnv, 'Motai')
 
+local function tryShowExistingMenu()
+    local lib = rawget(sharedEnv, 'Library')
+    if type(lib) ~= 'table' then
+        return
+    end
+
+    pcall(function()
+        if typeof(lib.ScreenGui) == 'Instance' then
+            lib.ScreenGui.Enabled = true
+        end
+    end)
+
+    pcall(function()
+        if type(lib.SetVisible) == 'function' then
+            lib:SetVisible(true)
+            return
+        end
+        if type(lib.Open) == 'function' then
+            lib:Open()
+            return
+        end
+        if type(lib.Toggle) == 'function' and lib.Toggled == false then
+            lib:Toggle()
+        end
+    end)
+end
+
 if type(previous) == 'table' and (previous.status == 'starting' or previous.status == 'entry_returned') then
+    if previous.status == 'entry_returned' then
+        tryShowExistingMenu()
+    end
     return previous
 end
 if rawget(sharedEnv, 'MOTAI_LOADED') == true then
+    tryShowExistingMenu()
     return previous
 end
 
