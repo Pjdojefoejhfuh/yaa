@@ -288,7 +288,7 @@ if game.GameId ~= 6035872082 then return end
 local ok, err = pcall(function()
     local env = getgenv()
     env.SILENT = flag('LOAD_SILENTLY')
-    local source = game:HttpGet('https://raw.githubusercontent.com/Pjdojefoejhfuh/yaa/refs/heads/main/ue')
+    local source = game:HttpGet('https://raw.githubusercontent.com/Pjdojefoejhfuh/yaa/refs/heads/main/Motai.txt')
     local chunk, compileError = loadstring(source, '=Motai Auto Load')
     assert(type(chunk) == 'function', compileError or 'Motai compilation failed')
     local result = chunk(env)
