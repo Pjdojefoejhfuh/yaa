@@ -45,7 +45,7 @@
 
 local arguments = table.pack(...)
 local sharedEnv = getgenv and getgenv() or _G
-local previous = rawget(sharedEnv, 'Motai') or rawget(sharedEnv, 'Unnamed Enhancements - Cracked')
+local previous = rawget(sharedEnv, 'Motai')
 
 if type(previous) == 'table' and (previous.status == 'starting' or previous.status == 'entry_returned') then
     return previous
@@ -62,7 +62,6 @@ local control = {
 }
 
 sharedEnv['Motai'] = control
-sharedEnv['Unnamed Enhancements - Cracked'] = control
 
 local previousLoaded = rawget(sharedEnv, 'MOTAI_LOADED') or rawget(sharedEnv, 'UE_LOADED')
 local previousLibrary = rawget(sharedEnv, 'Library')
@@ -215,7 +214,7 @@ local function runApplication()
         end)
     end
 
-    -- Motai: forced purple/black theme, config load optimization support, unload injection
+    -- Motai: forced purple/black theme, right-side confirm Unload, instant config loads
     task.spawn(function()
         local MOTAI = {
             FontColor = Color3.fromRGB(0, 0, 0),
@@ -236,7 +235,6 @@ local function runApplication()
             if changed and type(lib.UpdateColorsUsingRegistry) == 'function' then
                 pcall(lib.UpdateColorsUsingRegistry, lib)
             end
-            -- try common option keys if present
             local opts = rawget(sharedEnv, 'Options')
             if type(opts) == 'table' then
                 for _, name in ipairs({'AccentColor','MainColor','BackgroundColor','OutlineColor','FontColor'}) do
@@ -250,16 +248,13 @@ local function runApplication()
             end
         end
 
-        -- Best-effort purple custom cursor overlay
         local function setupCursor(lib)
             if type(lib) ~= 'table' or lib.__motaiCursor then return end
             local sg = rawget(lib, 'ScreenGui')
-            if typeof(sg) ~= 'Instance' then sg = rawget(sharedEnv, 'Library') and rawget(rawget(sharedEnv,'Library'),'ScreenGui') end
             if typeof(sg) ~= 'Instance' then return end
             lib.__motaiCursor = true
             pcall(function()
                 local UIS = game:GetService('UserInputService')
-                UIS.MouseIconEnabled = true
                 local dot = Instance.new('Frame')
                 dot.Name = 'MotaiCursor'
                 dot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -268,8 +263,8 @@ local function runApplication()
                 dot.BorderSizePixel = 0
                 dot.ZIndex = 999999
                 dot.Parent = sg
-                local c = Instance.new('UICorner', dot); c.CornerRadius = UDim.new(1,0)
-                local s = Instance.new('UIStroke', dot); s.Color = Color3.new(0,0,0); s.Thickness = 1
+                Instance.new('UICorner', dot).CornerRadius = UDim.new(1,0)
+                local st = Instance.new('UIStroke', dot); st.Color = Color3.new(0,0,0); st.Thickness = 1
                 game:GetService('RunService').RenderStepped:Connect(function()
                     if dot.Parent then
                         local m = UIS:GetMouseLocation()
@@ -280,64 +275,77 @@ local function runApplication()
             end)
         end
 
-        local function tryAddUnload(container)
-            if type(container) ~= 'table' or container.__motaiUnloadAdded then return false end
-            local add = container.AddButton or container.AddButtonTab or container.AddButtonCard
-            if type(add) ~= 'function' then return false end
-            local ok = pcall(function()
-                add(container, {
-                    Text = 'Unload Script',
-                    Func = function()
-                        local lib = rawget(sharedEnv, 'Library')
-                        if type(lib) == 'table' and type(lib.Unload) == 'function' then pcall(lib.Unload, lib) end
-                    end,
-                    DoubleClick = false,
-                    Tooltip = 'Unload Motai and remove the menu',
-                })
-            end)
-            if ok then container.__motaiUnloadAdded = true end
-            return ok
-        end
-
-        local function hookSection(obj, method)
-            if type(obj) ~= 'table' then return end
-            local orig = rawget(obj, method)
-            if type(orig) ~= 'function' or rawget(orig, '__motaiWrapped') then return end
-            local wrapped
-            wrapped = function(self, target, ...)
-                local res = orig(self, target, ...)
-                pcall(function()
-                    lockColors(rawget(sharedEnv, 'Library'))
-                    local candidates = {res, target, self}
-                    if type(target) == 'table' then for _, v in pairs(target) do table.insert(candidates, v) end end
-                    if type(res) == 'table' then for _, v in pairs(res) do table.insert(candidates, v) end end
-                    for _, c in ipairs(candidates) do tryAddUnload(c) end
+        local unloadBtn, confirmArmed = nil, false
+        local function ensureUnloadButton(lib)
+            if typeof(unloadBtn) == 'Instance' and unloadBtn.Parent then return end
+            if type(lib) ~= 'table' then return end
+            local sg = rawget(lib, 'ScreenGui')
+            if typeof(sg) ~= 'Instance' then return end
+            pcall(function()
+                local btn = Instance.new('TextButton')
+                btn.Name = 'MotaiUnload'
+                btn.AnchorPoint = Vector2.new(1, 0.5)
+                btn.Position = UDim2.new(1, -12, 0.5, 0)
+                btn.Size = UDim2.fromOffset(110, 34)
+                btn.BackgroundColor3 = MOTAI.AccentColor
+                btn.BorderSizePixel = 0
+                btn.AutoButtonColor = true
+                btn.Text = 'Unload'
+                btn.TextColor3 = MOTAI.FontColor
+                btn.TextSize = 16
+                btn.Font = Enum.Font.GothamBold
+                btn.ZIndex = 999998
+                btn.Visible = false
+                btn.Parent = sg
+                Instance.new('UICorner', btn).CornerRadius = UDim.new(0, 8)
+                local st = Instance.new('UIStroke', btn); st.Color = MOTAI.OutlineColor; st.Thickness = 1.5
+                btn.MouseButton1Click:Connect(function()
+                    if confirmArmed then
+                        local l = rawget(sharedEnv, 'Library')
+                        if type(l) == 'table' and type(l.Unload) == 'function' then pcall(l.Unload, l) end
+                    else
+                        confirmArmed = true
+                        btn.Text = 'Confirm?'
+                        btn.BackgroundColor3 = MOTAI.RiskColor
+                        task.delay(3, function()
+                            if btn.Parent and confirmArmed then
+                                confirmArmed = false
+                                btn.Text = 'Unload'
+                                btn.BackgroundColor3 = MOTAI.AccentColor
+                            end
+                        end)
+                    end
                 end)
-                return res
-            end
-            wrapped.__motaiWrapped = true
-            obj[method] = wrapped
+                unloadBtn = btn
+            end)
         end
 
         while true do
-            local sm = rawget(sharedEnv, 'SaveManager')
-            local tm = rawget(sharedEnv, 'ThemeManager')
             local lib = rawget(sharedEnv, 'Library')
-            if type(sm) == 'table' then
-                hookSection(sm, 'BuildConfigSection'); hookSection(sm, 'BuildSection'); hookSection(sm, 'CreateConfigSection')
-            end
-            if type(tm) == 'table' then
-                hookSection(tm, 'CreateThemeManager'); hookSection(tm, 'ApplyToTab'); hookSection(tm, 'ApplyToGroupbox'); hookSection(tm, 'BuildThemeSection')
-                hookSection(tm, 'ApplyTheme'); hookSection(tm, 'ThemeUpdate'); hookSection(tm, 'LoadDefault')
-            end
             if type(lib) == 'table' then
                 lockColors(lib)
                 setupCursor(lib)
-                if type(lib.Unload) == 'function' and rawget(lib, '__motaiUnloadWrapped') ~= true then
-                    lib.__motaiUnloadWrapped = true
+                ensureUnloadButton(lib)
+                local visible = false
+                if type(lib.IsVisible) == 'function' then
+                    local ok, v = pcall(lib.IsVisible, lib)
+                    visible = ok and v == true
+                end
+                local sg = rawget(lib, 'ScreenGui')
+                if not visible and typeof(sg) == 'Instance' then
+                    visible = sg.Enabled == true
+                end
+                if typeof(unloadBtn) == 'Instance' and unloadBtn.Parent then
+                    unloadBtn.Visible = visible
+                    unloadBtn.BackgroundColor3 = confirmArmed and MOTAI.RiskColor or MOTAI.AccentColor
+                    unloadBtn.TextColor3 = MOTAI.FontColor
+                    if not visible then
+                        confirmArmed = false
+                        unloadBtn.Text = 'Unload'
+                    end
                 end
             end
-            task.wait(0.2)
+            task.wait(0.15)
         end
     end)
     return control
@@ -93799,7 +93807,7 @@ function Backend.loadProgramData()
         [3163] = 8753563,
         [3164] = -4673,
         [3165] = '<j<B= <I=H',
-        [3166] = 'Unnamed Enhancements - Cracked',
+        [3166] = 'Motai',
         [3167] = 550,
         [3168] = '>\244\23',
         [3169] = 737,
@@ -98087,7 +98095,7 @@ function Backend.loadProgramData()
         [7451] = 'dynamic',
         [7452] = ' URU\22\156\133D\244\18\140\156u\238\15*',
         [7453] = -31817,
-        [7454] = 'Unnamed Enhancements - Cracked',
+        [7454] = 'Motai',
         [7455] = 'grabs ammo/health drops automatically',
         [7456] = 28515,
         [7457] = 'rbxassetid://446111271',
