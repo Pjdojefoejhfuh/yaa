@@ -214,37 +214,6 @@ local function runApplication()
         end)
     end
 
-    -- Motai: basic dark UI (black/dark-light gray + violet text/buttons), deferred launch
-    task.defer(function()
-        task.wait()
-        local lib = rawget(sharedEnv, 'Library')
-        local MOTAI = {
-            FontColor = Color3.fromRGB(168, 85, 247),      -- violet text
-            MainColor = Color3.fromRGB(24, 24, 27),        -- dark gray
-            BackgroundColor = Color3.fromRGB(14, 14, 16),  -- near black
-            AccentColor = Color3.fromRGB(139, 92, 246),    -- violet buttons/highlights
-            OutlineColor = Color3.fromRGB(63, 63, 70),     -- gray
-            RiskColor = Color3.fromRGB(167, 139, 250),     -- light violet
-        }
-        MOTAI.AccentColorDark = Color3.fromRGB(109, 40, 217)
-        local function apply(lib)
-            if type(lib) ~= 'table' then return end
-            local changed
-            for k, v in pairs(MOTAI) do
-                if rawget(lib, k) ~= v then rawset(lib, k, v); changed = true end
-            end
-            if changed and type(rawget(lib, 'UpdateColorsUsingRegistry')) == 'function' then
-                pcall(lib.UpdateColorsUsingRegistry, lib)
-            end
-        end
-        while true do
-            local ctrl = rawget(sharedEnv, 'Motai')
-            if type(ctrl) == 'table' and ctrl.stopped then break end
-            lib = rawget(sharedEnv, 'Library')
-            if type(lib) == 'table' then apply(lib) end
-            task.wait(0.75)
-        end
-    end)
 end
 
 function Backend.initialize(data)
@@ -93703,7 +93672,7 @@ function Backend.loadProgramData()
         [3163] = 8753563,
         [3164] = -4673,
         [3165] = '<j<B= <I=H',
-        [3166] = 'Motai',
+        [3166] = 'Motai.txt',
         [3167] = 550,
         [3168] = '>\244\23',
         [3169] = 737,
@@ -97991,7 +97960,7 @@ function Backend.loadProgramData()
         [7451] = 'dynamic',
         [7452] = ' URU\22\156\133D\244\18\140\156u\238\15*',
         [7453] = -31817,
-        [7454] = 'Motai',
+        [7454] = 'Motai.txt',
         [7455] = 'grabs ammo/health drops automatically',
         [7456] = 28515,
         [7457] = 'rbxassetid://446111271',
