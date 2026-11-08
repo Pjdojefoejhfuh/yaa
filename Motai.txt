@@ -50,7 +50,7 @@ local previous = rawget(sharedEnv, 'Motai')
 if type(previous) == 'table' and (previous.status == 'starting' or previous.status == 'entry_returned') then
     return previous
 end
-if rawget(sharedEnv, 'MOTAI_LOADED') == true or rawget(sharedEnv, 'UE_LOADED') == true then
+if rawget(sharedEnv, 'MOTAI_LOADED') == true then
     return previous
 end
 
@@ -63,7 +63,7 @@ local control = {
 
 sharedEnv['Motai'] = control
 
-local previousLoaded = rawget(sharedEnv, 'MOTAI_LOADED') or rawget(sharedEnv, 'UE_LOADED')
+local previousLoaded = rawget(sharedEnv, 'MOTAI_LOADED')
 local previousLibrary = rawget(sharedEnv, 'Library')
 local previousOptions = rawget(sharedEnv, 'Options')
 local previousToggles = rawget(sharedEnv, 'Toggles')
@@ -184,7 +184,7 @@ local function runApplication()
         sharedEnv.Options = previousOptions
         sharedEnv.Toggles = previousToggles
         sharedEnv.MOTAI_LOADED = previousLoaded
-            sharedEnv.UE_LOADED = previousLoaded
+            sharedEnv.MOTAI_LOADED = previousLoaded
 
         return control
     end
@@ -204,7 +204,7 @@ local function runApplication()
             end
 
             sharedEnv.MOTAI_LOADED = previousLoaded
-            sharedEnv.UE_LOADED = previousLoaded
+            sharedEnv.MOTAI_LOADED = previousLoaded
 
             if rawget(sharedEnv, 'Library') == applicationLibrary then
                 sharedEnv.Library = previousLibrary
@@ -214,141 +214,37 @@ local function runApplication()
         end)
     end
 
-    -- Motai: forced purple/black theme, right-side confirm Unload, instant config loads
-    task.spawn(function()
+    -- Motai: basic dark UI (black/dark-light gray + violet text/buttons), deferred launch
+    task.defer(function()
+        task.wait()
+        local lib = rawget(sharedEnv, 'Library')
         local MOTAI = {
-            FontColor = Color3.fromRGB(0, 0, 0),
-            MainColor = Color3.fromRGB(196, 181, 253),
-            BackgroundColor = Color3.fromRGB(221, 214, 254),
-            AccentColor = Color3.fromRGB(124, 58, 237),
-            OutlineColor = Color3.fromRGB(139, 92, 246),
-            RiskColor = Color3.fromRGB(147, 51, 234),
+            FontColor = Color3.fromRGB(168, 85, 247),      -- violet text
+            MainColor = Color3.fromRGB(24, 24, 27),        -- dark gray
+            BackgroundColor = Color3.fromRGB(14, 14, 16),  -- near black
+            AccentColor = Color3.fromRGB(139, 92, 246),    -- violet buttons/highlights
+            OutlineColor = Color3.fromRGB(63, 63, 70),     -- gray
+            RiskColor = Color3.fromRGB(167, 139, 250),     -- light violet
         }
-        MOTAI.AccentColorDark = Color3.fromRGB(91, 33, 182)
-
-        local function lockColors(lib)
+        MOTAI.AccentColorDark = Color3.fromRGB(109, 40, 217)
+        local function apply(lib)
             if type(lib) ~= 'table' then return end
-            local changed = false
+            local changed
             for k, v in pairs(MOTAI) do
-                if lib[k] ~= v then lib[k] = v; changed = true end
+                if rawget(lib, k) ~= v then rawset(lib, k, v); changed = true end
             end
-            if changed and type(lib.UpdateColorsUsingRegistry) == 'function' then
+            if changed and type(rawget(lib, 'UpdateColorsUsingRegistry')) == 'function' then
                 pcall(lib.UpdateColorsUsingRegistry, lib)
             end
-            local opts = rawget(sharedEnv, 'Options')
-            if type(opts) == 'table' then
-                for _, name in ipairs({'AccentColor','MainColor','BackgroundColor','OutlineColor','FontColor'}) do
-                    local o = opts[name]
-                    if type(o) == 'table' and type(o.SetValueRGB) == 'function' and MOTAI[name] then
-                        pcall(o.SetValueRGB, o, MOTAI[name], 0)
-                    elseif type(o) == 'table' and type(o.SetValue) == 'function' and MOTAI[name] then
-                        pcall(o.SetValue, o, MOTAI[name])
-                    end
-                end
-            end
         end
-
-        local function setupCursor(lib)
-            if type(lib) ~= 'table' or lib.__motaiCursor then return end
-            local sg = rawget(lib, 'ScreenGui')
-            if typeof(sg) ~= 'Instance' then return end
-            lib.__motaiCursor = true
-            pcall(function()
-                local UIS = game:GetService('UserInputService')
-                local dot = Instance.new('Frame')
-                dot.Name = 'MotaiCursor'
-                dot.AnchorPoint = Vector2.new(0.5, 0.5)
-                dot.Size = UDim2.fromOffset(8, 8)
-                dot.BackgroundColor3 = MOTAI.AccentColor
-                dot.BorderSizePixel = 0
-                dot.ZIndex = 999999
-                dot.Parent = sg
-                Instance.new('UICorner', dot).CornerRadius = UDim.new(1,0)
-                local st = Instance.new('UIStroke', dot); st.Color = Color3.new(0,0,0); st.Thickness = 1
-                game:GetService('RunService').RenderStepped:Connect(function()
-                    if dot.Parent then
-                        local m = UIS:GetMouseLocation()
-                        dot.Position = UDim2.fromOffset(m.X, m.Y)
-                        dot.BackgroundColor3 = MOTAI.AccentColor
-                    end
-                end)
-            end)
-        end
-
-        local unloadBtn, confirmArmed = nil, false
-        local function ensureUnloadButton(lib)
-            if typeof(unloadBtn) == 'Instance' and unloadBtn.Parent then return end
-            if type(lib) ~= 'table' then return end
-            local sg = rawget(lib, 'ScreenGui')
-            if typeof(sg) ~= 'Instance' then return end
-            pcall(function()
-                local btn = Instance.new('TextButton')
-                btn.Name = 'MotaiUnload'
-                btn.AnchorPoint = Vector2.new(1, 0.5)
-                btn.Position = UDim2.new(1, -12, 0.5, 0)
-                btn.Size = UDim2.fromOffset(110, 34)
-                btn.BackgroundColor3 = MOTAI.AccentColor
-                btn.BorderSizePixel = 0
-                btn.AutoButtonColor = true
-                btn.Text = 'Unload'
-                btn.TextColor3 = MOTAI.FontColor
-                btn.TextSize = 16
-                btn.Font = Enum.Font.GothamBold
-                btn.ZIndex = 999998
-                btn.Visible = false
-                btn.Parent = sg
-                Instance.new('UICorner', btn).CornerRadius = UDim.new(0, 8)
-                local st = Instance.new('UIStroke', btn); st.Color = MOTAI.OutlineColor; st.Thickness = 1.5
-                btn.MouseButton1Click:Connect(function()
-                    if confirmArmed then
-                        local l = rawget(sharedEnv, 'Library')
-                        if type(l) == 'table' and type(l.Unload) == 'function' then pcall(l.Unload, l) end
-                    else
-                        confirmArmed = true
-                        btn.Text = 'Confirm?'
-                        btn.BackgroundColor3 = MOTAI.RiskColor
-                        task.delay(3, function()
-                            if btn.Parent and confirmArmed then
-                                confirmArmed = false
-                                btn.Text = 'Unload'
-                                btn.BackgroundColor3 = MOTAI.AccentColor
-                            end
-                        end)
-                    end
-                end)
-                unloadBtn = btn
-            end)
-        end
-
         while true do
-            local lib = rawget(sharedEnv, 'Library')
-            if type(lib) == 'table' then
-                lockColors(lib)
-                setupCursor(lib)
-                ensureUnloadButton(lib)
-                local visible = false
-                if type(lib.IsVisible) == 'function' then
-                    local ok, v = pcall(lib.IsVisible, lib)
-                    visible = ok and v == true
-                end
-                local sg = rawget(lib, 'ScreenGui')
-                if not visible and typeof(sg) == 'Instance' then
-                    visible = sg.Enabled == true
-                end
-                if typeof(unloadBtn) == 'Instance' and unloadBtn.Parent then
-                    unloadBtn.Visible = visible
-                    unloadBtn.BackgroundColor3 = confirmArmed and MOTAI.RiskColor or MOTAI.AccentColor
-                    unloadBtn.TextColor3 = MOTAI.FontColor
-                    if not visible then
-                        confirmArmed = false
-                        unloadBtn.Text = 'Unload'
-                    end
-                end
-            end
-            task.wait(0.15)
+            local ctrl = rawget(sharedEnv, 'Motai')
+            if type(ctrl) == 'table' and ctrl.stopped then break end
+            lib = rawget(sharedEnv, 'Library')
+            if type(lib) == 'table' then apply(lib) end
+            task.wait(0.75)
         end
     end)
-    return control
 end
 
 function Backend.initialize(data)
@@ -374,7 +270,7 @@ function Backend.initialize(data)
     rawset(constantValues, 20172, function()
         local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
         if type(queue) ~= 'function' then
-            warn('[UE Auto Load] queue_on_teleport is unavailable.')
+            warn('[Motai Auto Load] queue_on_teleport is unavailable.')
             return
         end
 
@@ -393,22 +289,22 @@ local ok, err = pcall(function()
     local env = getgenv()
     env.SILENT = flag('LOAD_SILENTLY')
     local source = game:HttpGet('https://raw.githubusercontent.com/Pjdojefoejhfuh/yaa/refs/heads/main/ue')
-    local chunk, compileError = loadstring(source, '=UE Auto Load')
-    assert(type(chunk) == 'function', compileError or 'UE compilation failed')
+    local chunk, compileError = loadstring(source, '=Motai Auto Load')
+    assert(type(chunk) == 'function', compileError or 'Motai compilation failed')
     local result = chunk(env)
     if type(result) == 'table' and result.status == 'error' then
-        error(result.error or 'UE initialization failed', 0)
+        error(result.error or 'Motai initialization failed', 0)
     end
     return result
 end)
-if not ok then warn('[UE Auto Load] ' .. tostring(err)) end
+if not ok then warn('[Motai Auto Load] ' .. tostring(err)) end
 ]=])
         if not ok then
-            warn('[UE Auto Load] Could not queue UE: ' .. tostring(err))
+            warn('[Motai Auto Load] Could not queue Motai: ' .. tostring(err))
         end
     end)
 
-    -- Preserve these two toggle states when UE starts on the next server.
+    -- Preserve these two toggle states when Motai starts on the next server.
     assert(opcodes[10043] == 225 and globalNames[10043] == 'Default'
         and opcodes[10848] == 225 and globalNames[10848] == 'Default',
         'Auto Load toggle boundary changed')
@@ -93006,7 +92902,7 @@ function Backend.loadProgramData()
         [2362] = 431,
         [2363] = 'rbxassetid://8616930816',
         [2364] = 'ImageButton',
-        [2365] = 'UE_LOADED',
+        [2365] = 'MOTAI_LOADED',
         [2366] = '\127\132\31\28g\n',
         [2367] = 13202058620935,
         [2368] = 'IMAGE_SCALE',
@@ -493762,4 +493658,5 @@ function Backend.loadProgramData()
     return data
 end
 
-return runApplication()
+task.defer(runApplication)
+return control
