@@ -494112,39 +494112,6 @@ task.spawn(function()
                 return nil
             end
             return nil
-            local hit = ZH[s] or ZH[string.lower(s)]
-            if hit then
-                return hit
-            end
-            local label, rest = string.match(s, '^([%w%s%-%_]+):%s*(.*)$')
-            if label and not SKIP[label] then
-                local zl = ZH[label] or ZH[string.lower(label)]
-                if zl then
-                    return (rest and rest ~= '') and (zl .. ': ' .. rest) or zl
-                end
-            end
-            if string.find(s, ',', 1, true) then
-                local parts = string.split(s, ',')
-                local out, any = {}, false
-                for i, p in ipairs(parts) do
-                    local t = p:match('^%s*(.-)%s*$') or p
-                    if SKIP[t] then
-                        out[i] = t
-                    else
-                        local z = ZH[t] or ZH[string.lower(t)]
-                        if z then
-                            any = true
-                            out[i] = z
-                        else
-                            out[i] = t
-                        end
-                    end
-                end
-                if any then
-                    return table.concat(out, ', ')
-                end
-            end
-            return nil
         end
 
         local function apply(inst)

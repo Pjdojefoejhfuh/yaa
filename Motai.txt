@@ -227,30 +227,57 @@ local function runApplication()
         local env = getgenv and getgenv() or _G
         local lib = rawget(env, 'Library')
 
+        control.userUnloaded = true
+        control.status = 'stopped'
+        control.stopped = true
+
+        if heartbeatConnection then
+            pcall(function()
+                heartbeatConnection:Disconnect()
+            end)
+            heartbeatConnection = nil
+        end
+
+        pcall(function()
+            local toggles = rawget(env, 'Toggles')
+            if type(toggles) == 'table' then
+                for _, toggle in pairs(toggles) do
+                    if type(toggle) == 'table' and type(toggle.SetValue) == 'function' then
+                        pcall(function()
+                            toggle:SetValue(false)
+                        end)
+                    end
+                end
+            end
+        end)
+
         if type(lib) == 'table' and type(lib.Unload) == 'function' then
             local okUnload = pcall(function()
                 lib:Unload()
             end)
             if okUnload then
+                env.MotaiUnload = nil
+                _G.MotaiUnload = nil
                 return
             end
         end
 
         pcall(function()
-            if type(lib) == 'table' and typeof(lib.ScreenGui) == 'Instance' then
-                lib.ScreenGui:Destroy()
+            if type(lib) == 'table' then
+                if typeof(lib.ScreenGui) == 'Instance' then lib.ScreenGui:Destroy() end
+                if typeof(lib.Watermark) == 'Instance' then lib.Watermark:Destroy() end
+                if typeof(lib.NotificationArea) == 'Instance' then lib.NotificationArea:Destroy() end
+                if typeof(lib.DragOutlineGui) == 'Instance' then lib.DragOutlineGui:Destroy() end
             end
         end)
 
-        control.status = 'stopped'
-        control.stopped = true
-        control.userUnloaded = true
         env.MOTAI_LOADED = nil
         env.Motai = nil
         env.Library = nil
         env.Options = nil
         env.Toggles = nil
         env.MotaiUnload = nil
+        _G.MotaiUnload = nil
     end
 
     sharedEnv.MotaiUnload = motaiFullUnload
@@ -703,6 +730,7 @@ function Native.library(captures)
         end
 
         local screenGui = Instance.new('ScreenGui', capture10)
+        uiLibrary.DragOutlineGui = screenGui
 
         function uiLibrary:MakeDraggableOutline(frame2, dragHeight2, respectDragLock2)
             frame2.Active = true
@@ -1178,28 +1206,95 @@ function Native.library(captures)
 
                 local connection2 = table.remove(uiLibrary.Signals, index5)
 
-                connection2:Disconnect()
+                if typeof(connection2) == 'RBXScriptConnection' then
+                    connection2:Disconnect()
+                elseif type(connection2) == 'table' and type(connection2.Disconnect) == 'function' then
+                    pcall(function()
+                        connection2:Disconnect()
+                    end)
+                end
             end
 
-            if uiLibrary.OnUnload then
-                uiLibrary.OnUnload()
-            end
+            pcall(function()
+                local env = getgenv and getgenv() or _G
+                local toggles = rawget(env, 'Toggles')
+                if type(toggles) == 'table' then
+                    for _, toggle in pairs(toggles) do
+                        if type(toggle) == 'table' then
+                            pcall(function()
+                                if type(toggle.SetValue) == 'function' then
+                                    toggle:SetValue(false)
+                                elseif toggle.Value ~= nil then
+                                    toggle.Value = false
+                                end
+                            end)
+                        end
+                    end
+                end
+            end)
+
+            pcall(function()
+                if uiLibrary.OnUnload then
+                    uiLibrary.OnUnload()
+                end
+            end)
 
             pcall(function()
                 contextActionService:UnbindAction('Freeze')
             end)
-            pcall(function()
-                if typeof(capture16) == 'Instance' then capture16:Destroy() end
-            end)
-            pcall(function()
-                if typeof(capture20) == 'Instance' then capture20:Destroy() end
-            end)
-            pcall(function()
-                if typeof(capture05) == 'Instance' then capture05:Destroy() end
-            end)
-            pcall(function()
-                if typeof(capture09) == 'Instance' then capture09:Destroy() end
-            end)
+
+            local function destroyIfScriptGui(instance)
+                if typeof(instance) ~= 'Instance' then
+                    return
+                end
+
+                local okDestroy = pcall(function()
+                    instance:Destroy()
+                end)
+                if okDestroy then
+                    return
+                end
+
+                pcall(function()
+                    if instance:IsA('GuiObject') or instance:IsA('LayerCollector') then
+                        instance.Visible = false
+                    end
+                end)
+            end
+
+            for _, instance in ipairs({
+                uiLibrary.Watermark,
+                uiLibrary.WatermarkText and uiLibrary.WatermarkText.Parent or nil,
+                uiLibrary.NotificationArea,
+                uiLibrary.DragOutlineGui,
+                uiLibrary.KeybindFrame,
+                uiLibrary.KeybindContainer,
+                uiLibrary.ScreenGui,
+                capture09,
+            }) do
+                destroyIfScriptGui(instance)
+            end
+
+            if type(uiLibrary.Popouts) == 'table' then
+                for _, popout in pairs(uiLibrary.Popouts) do
+                    if type(popout) == 'table' then
+                        destroyIfScriptGui(popout.Holder or popout.Main or popout.Frame or popout.ScreenGui)
+                    elseif typeof(popout) == 'Instance' then
+                        destroyIfScriptGui(popout)
+                    end
+                end
+            end
+
+            for _, instance in ipairs({ capture16, capture20, capture05 }) do
+                if typeof(instance) == 'Instance' then
+                    local okIsUi = pcall(function()
+                        return instance:IsA('ScreenGui') or instance:IsA('GuiObject') or instance:IsA('LayerCollector')
+                    end)
+                    if okIsUi then
+                        destroyIfScriptGui(instance)
+                    end
+                end
+            end
 
             pcall(function()
                 local env = getgenv and getgenv() or _G
@@ -493759,85 +493854,4 @@ function Backend.loadProgramData()
     setmetatable(data[8398], constantMetatable)
     setmetatable(data[8404], constantMetatable)
     setmetatable(data[8405], constantMetatable)
-    setmetatable(data[8406], constantMetatable)
-    setmetatable(data[8412], constantMetatable)
-    setmetatable(data[8413], constantMetatable)
-    setmetatable(data[8414], constantMetatable)
-    setmetatable(data[8420], constantMetatable)
-    setmetatable(data[8421], constantMetatable)
-    setmetatable(data[8422], constantMetatable)
-    setmetatable(data[8428], constantMetatable)
-    setmetatable(data[8429], constantMetatable)
-    setmetatable(data[8430], constantMetatable)
-    setmetatable(data[8436], constantMetatable)
-    setmetatable(data[8437], constantMetatable)
-    setmetatable(data[8438], constantMetatable)
-    setmetatable(data[8444], constantMetatable)
-    setmetatable(data[8445], constantMetatable)
-    setmetatable(data[8446], constantMetatable)
-    setmetatable(data[8452], constantMetatable)
-    setmetatable(data[8453], constantMetatable)
-    setmetatable(data[8454], constantMetatable)
-    setmetatable(data[8460], constantMetatable)
-    setmetatable(data[8461], constantMetatable)
-    setmetatable(data[8462], constantMetatable)
-    setmetatable(data[8468], constantMetatable)
-    setmetatable(data[8469], constantMetatable)
-    setmetatable(data[8470], constantMetatable)
-    setmetatable(data[8476], constantMetatable)
-    setmetatable(data[8477], constantMetatable)
-    setmetatable(data[8478], constantMetatable)
-    setmetatable(data[8484], constantMetatable)
-    setmetatable(data[8485], constantMetatable)
-    setmetatable(data[8486], constantMetatable)
-    setmetatable(data[8492], constantMetatable)
-    setmetatable(data[8493], constantMetatable)
-    setmetatable(data[8494], constantMetatable)
-    setmetatable(data[8500], constantMetatable)
-    setmetatable(data[8501], constantMetatable)
-    setmetatable(data[8502], constantMetatable)
-    setmetatable(data[8508], constantMetatable)
-    setmetatable(data[8509], constantMetatable)
-    setmetatable(data[8510], constantMetatable)
-    setmetatable(data[8516], constantMetatable)
-    setmetatable(data[8517], constantMetatable)
-    setmetatable(data[8518], constantMetatable)
-    setmetatable(data[8524], constantMetatable)
-    setmetatable(data[8525], constantMetatable)
-    setmetatable(data[8526], constantMetatable)
-    setmetatable(data[8532], constantMetatable)
-    setmetatable(data[8533], constantMetatable)
-    setmetatable(data[8534], constantMetatable)
-    setmetatable(data[8540], constantMetatable)
-    setmetatable(data[8541], constantMetatable)
-    setmetatable(data[8542], constantMetatable)
-    setmetatable(data[8548], constantMetatable)
-    setmetatable(data[8549], constantMetatable)
-    setmetatable(data[8550], constantMetatable)
-    setmetatable(data[8556], constantMetatable)
-    setmetatable(data[8557], constantMetatable)
-    setmetatable(data[8558], constantMetatable)
-    setmetatable(data[8571], constantMetatable)
-    setmetatable(data[8572], constantMetatable)
-    setmetatable(data[8573], constantMetatable)
-    setmetatable(data[8579], constantMetatable)
-    setmetatable(data[8580], constantMetatable)
-    setmetatable(data[8581], constantMetatable)
-    setmetatable(data[8587], constantMetatable)
-    setmetatable(data[8588], constantMetatable)
-    setmetatable(data[8589], constantMetatable)
-    setmetatable(data[8595], constantMetatable)
-    setmetatable(data[8596], constantMetatable)
-    setmetatable(data[8597], constantMetatable)
-    setmetatable(data[8603], constantMetatable)
-    setmetatable(data[8604], constantMetatable)
-    setmetatable(data[8605], constantMetatable)
-    setmetatable(data[8611], constantMetatable)
-    setmetatable(data[8612], constantMetatable)
-    setmetatable(data[8613], constantMetatable)
-
-    return data
-end
-
-task.defer(runApplication)
-return control
+   
