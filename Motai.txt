@@ -223,6 +223,144 @@ local function runApplication()
     control.status = 'entry_returned'
     control.elapsed = os.clock() - control.started
 
+    local function motaiFullUnload()
+        local env = getgenv and getgenv() or _G
+        local lib = rawget(env, 'Library')
+
+        if type(lib) == 'table' and type(lib.Unload) == 'function' then
+            local okUnload = pcall(function()
+                lib:Unload()
+            end)
+            if okUnload then
+                return
+            end
+        end
+
+        pcall(function()
+            if type(lib) == 'table' and typeof(lib.ScreenGui) == 'Instance' then
+                lib.ScreenGui:Destroy()
+            end
+        end)
+
+        control.status = 'stopped'
+        control.stopped = true
+        control.userUnloaded = true
+        env.MOTAI_LOADED = nil
+        env.Motai = nil
+        env.Library = nil
+        env.Options = nil
+        env.Toggles = nil
+        env.MotaiUnload = nil
+    end
+
+    sharedEnv.MotaiUnload = motaiFullUnload
+    _G.MotaiUnload = motaiFullUnload
+
+    task.defer(function()
+        local env = getgenv and getgenv() or _G
+        local lib = rawget(env, 'Library')
+        if type(lib) ~= 'table' or control.userUnloaded then
+            return
+        end
+
+        local function isSettingsName(name)
+            if type(name) ~= 'string' then
+                return false
+            end
+            local lower = string.lower(name)
+            return lower:find('setting', 1, true) ~= nil
+                or lower:find('config', 1, true) ~= nil
+                or lower:find('ui', 1, true) ~= nil
+                or lower:find('menu', 1, true) ~= nil
+        end
+
+        local function tryAddUnloadButton(container)
+            if type(container) ~= 'table' or type(container.AddButton) ~= 'function' then
+                return false
+            end
+            if container._MotaiUnloadButtonAdded then
+                return true
+            end
+
+            local okButton = pcall(function()
+                container:AddButton({
+                    Text = 'Unload',
+                    Func = motaiFullUnload,
+                    DoubleClick = false,
+                    Tooltip = 'Désactive Motai, ferme le menu et réinitialise le script jusqu\'à la prochaine exécution.',
+                })
+            end)
+
+            if okButton then
+                container._MotaiUnloadButtonAdded = true
+                return true
+            end
+
+            okButton = pcall(function()
+                container:AddButton('Unload', motaiFullUnload)
+            end)
+
+            if okButton then
+                container._MotaiUnloadButtonAdded = true
+                return true
+            end
+
+            return false
+        end
+
+        local visited = setmetatable({}, { __mode = 'k' })
+        local added = false
+
+        local function scan(value, depth)
+            if added or depth > 5 or type(value) ~= 'table' or visited[value] then
+                return
+            end
+            visited[value] = true
+
+            for key, child in pairs(value) do
+                if added then
+                    return
+                end
+
+                if type(child) == 'table' then
+                    local name = child.Name or child.Title or child.TabName or child.name or key
+                    local looksLikeSettings = isSettingsName(name)
+
+                    if looksLikeSettings then
+                        if tryAddUnloadButton(child) then
+                            added = true
+                            return
+                        end
+
+                        for _, nestedKey in ipairs({ 'Groupboxes', 'Groupbox', 'Sections', 'Side', 'Left', 'Right', 'Tabboxes', 'Dependencies', 'Items' }) do
+                            local nested = child[nestedKey]
+                            if type(nested) == 'table' then
+                                if tryAddUnloadButton(nested) then
+                                    added = true
+                                    return
+                                end
+                                for _, nestedChild in pairs(nested) do
+                                    if tryAddUnloadButton(nestedChild) then
+                                        added = true
+                                        return
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    if depth < 5 and (key == 'Tabs' or key == 'Tab' or key == 'Windows' or key == 'Window' or key == 'Folders' or key == 'Library' or type(key) == 'number') then
+                        scan(child, depth + 1)
+                    elseif looksLikeSettings then
+                        scan(child, depth + 1)
+                    end
+                end
+            end
+        end
+
+        scan(lib, 0)
+    end)
+
     local applicationLibrary = rawget(sharedEnv, 'Library')
 
     if type(applicationLibrary) == 'table' and applicationLibrary ~= previousLibrary and typeof(applicationLibrary.ScreenGui) == 'Instance' then
@@ -232,9 +370,21 @@ local function runApplication()
 
             if heartbeatConnection then
                 heartbeatConnection:Disconnect()
+                heartbeatConnection = nil
             end
 
-            sharedEnv.MOTAI_LOADED = previousLoaded
+            if control.userUnloaded then
+                sharedEnv.MOTAI_LOADED = nil
+                sharedEnv.Motai = nil
+
+                if rawget(sharedEnv, 'Library') == applicationLibrary then
+                    sharedEnv.Library = nil
+                    sharedEnv.Options = nil
+                    sharedEnv.Toggles = nil
+                end
+                return
+            end
+
             sharedEnv.MOTAI_LOADED = previousLoaded
 
             if rawget(sharedEnv, 'Library') == applicationLibrary then
@@ -1035,11 +1185,42 @@ function Native.library(captures)
                 uiLibrary.OnUnload()
             end
 
-            contextActionService:UnbindAction('Freeze')
-            capture16:Destroy()
-            capture20:Destroy()
-            capture05:Destroy()
-            capture09:Destroy()
+            pcall(function()
+                contextActionService:UnbindAction('Freeze')
+            end)
+            pcall(function()
+                if typeof(capture16) == 'Instance' then capture16:Destroy() end
+            end)
+            pcall(function()
+                if typeof(capture20) == 'Instance' then capture20:Destroy() end
+            end)
+            pcall(function()
+                if typeof(capture05) == 'Instance' then capture05:Destroy() end
+            end)
+            pcall(function()
+                if typeof(capture09) == 'Instance' then capture09:Destroy() end
+            end)
+
+            pcall(function()
+                local env = getgenv and getgenv() or _G
+                local lib = rawget(env, 'Library')
+                if lib == uiLibrary then
+                    env.Library = nil
+                    env.Options = nil
+                    env.Toggles = nil
+                end
+
+                local ctrl = rawget(env, 'Motai')
+                if type(ctrl) == 'table' then
+                    ctrl.status = 'stopped'
+                    ctrl.stopped = true
+                    ctrl.unloaded = true
+                    ctrl.userUnloaded = true
+                end
+
+                env.MOTAI_LOADED = nil
+                env.Motai = nil
+            end)
         end
         function uiLibrary:CreateEvent(eventName)
             self.Events[eventName] = Instance.new(capture02[3][capture02[2] ])
