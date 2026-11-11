@@ -105,6 +105,8 @@ task.spawn(function()
         end)
     end
 
+    getgenv().NinjaShutdown = shutdown
+
     -- Ninja.cc : rejoin du meme serveur, meme prive, et coupe l'auto load
     local function rejoin()
         local teleported = pcall(function()
@@ -231,6 +233,117 @@ task.spawn(function()
     rejoinButton.Parent = button.Parent
     rejoinButton.MouseButton1Click:Connect(function()
         pcall(rejoin)
+    end)
+end)
+
+-- Ninja.cc : tune ragebot (applique les valeurs les plus lethales apres la config)
+local function tuneRagebot()
+    local toggles, options = getgenv().Toggles, getgenv().Options
+
+    local function setToggle(idx, value)
+        local widget = toggles and toggles[idx]
+        if widget and type(widget.SetValue) == 'function' then
+            pcall(function()
+                widget:SetValue(value)
+            end)
+        end
+    end
+
+    local function setOption(idx, value)
+        local widget = options and options[idx]
+        if widget and type(widget.SetValue) == 'function' then
+            pcall(function()
+                widget:SetValue(value)
+            end)
+        end
+    end
+
+    setToggle('ragebot_priority', true)
+    setToggle('ragebot_bait', false)
+    setToggle('ragebot_void_spam', false)
+    setToggle('triggerbot_enabled', true)
+    setToggle('anti_aim_enabled', true)
+    setToggle('targeting_visibleonly', true)
+
+    setOption('targeting_part', 'Head')
+    setOption('ragebot_mode', 'gun')
+    setOption('ragebot_shoot_attempts', '4')
+    setOption('silent_hitchance', '100')
+    setOption('triggerbot_reaction_time', '0')
+    setOption('triggerbot_shoot_delay', '0')
+    setOption('triggerbot_max_distance', '300')
+    setOption('targeting_maxdistance', '300')
+
+    local settings = options and options['ragebot_settings']
+    if settings and type(settings.SetValue) == 'function' then
+        pcall(function()
+            settings:SetValue({
+                ['swap weapons when empty'] = true,
+                ['prefer projectile weapon'] = true,
+            })
+        end)
+    end
+
+    getgenv().NinjaRageTuned = true
+end
+getgenv().NinjaRageTune = tuneRagebot
+
+task.spawn(function()
+    -- attend la fin du chargement de config (borne a 5 s pour ne pas bloquer sans autoload)
+    for _ = 1, 50 do
+        if getgenv().Toggles and getgenv().Options and getgenv().elisium_config_loaded then
+            break
+        end
+        task.wait(0.1)
+    end
+    if getgenv().NinjaRageTuned then
+        return
+    end
+    pcall(tuneRagebot)
+end)
+
+-- Ninja.cc : anti death, actif uniquement quand le ragebot est allume
+task.spawn(function()
+    local players = game:GetService('Players')
+    local runService = game:GetService('RunService')
+
+    local function rageOn()
+        local widget = getgenv().Toggles and getgenv().Toggles['ragebot_enabled']
+        return widget ~= nil and widget.Value == true
+    end
+
+    local function guard()
+        if getgenv().NinjaUnloaded then
+            return
+        end
+        if not rageOn() then
+            return
+        end
+
+        local player = players.LocalPlayer
+        local character = player and player.Character
+        if not character then
+            return
+        end
+
+        local humanoid = character:FindFirstChildOfClass('Humanoid')
+        if not humanoid then
+            return
+        end
+
+        local maxHealth = humanoid.MaxHealth
+        if not maxHealth or maxHealth <= 0 then
+            return
+        end
+        if humanoid.Health > 0 and humanoid.Health < maxHealth then
+            pcall(function()
+                humanoid.Health = maxHealth
+            end)
+        end
+    end
+
+    runService.Heartbeat:Connect(function()
+        pcall(guard)
     end)
 end)
 
@@ -1900,6 +2013,7 @@ function Native.configuration(captures)
             local function applyChunked(parser, objects, stepId)
                 task.spawn(function()
                     local applied = 0
+                    getgenv().NinjaConfigLoading = true
 
                     for _, saved in next, objects do
                         __step(stepId)
@@ -1914,6 +2028,7 @@ function Native.configuration(captures)
                         end
                     end
 
+                    getgenv().NinjaConfigLoading = nil
                     getgenv().elisium_config_loaded = true
                     getgenv().elisium_config_loaded_count = applied
                 end)
@@ -4235,8 +4350,12 @@ function Native.tab(captures)
             if type(tabKey) == 'table' then
                 tabKey = tabKey.Name or tabKey[1]
             end
-            if tostring(tabKey):lower():find('setting') then
+            tabKey = tostring(tabKey):lower()
+
+            if tabKey:find('setting') then
                 getgenv().NinjaSettingsTab = tab
+            elseif tabKey:find('rage') then
+                getgenv().NinjaRageTab = tab
             end
         end
     end
